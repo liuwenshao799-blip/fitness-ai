@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FitPlan 健身计划</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="hero">
+      <img src="assets/fitness-hero.png" alt="健身器械和训练计划本" class="hero__image">
+      <div class="hero__shade"></div>
+      <nav class="topbar" aria-label="页面导航">
+        <strong>FitPlan</strong>
+        <div class="user-switcher" aria-label="用户管理">
+          <select id="userSelect" title="切换用户"></select>
+          <input type="text" id="newUserName" placeholder="新用户姓名" aria-label="新用户姓名">
+          <button class="mini-button" type="button" id="addUserButton">新增用户</button>
+          <button class="mini-button mini-button--ghost" type="button" id="deleteUserButton">删除</button>
+          <span class="sync-badge" id="syncStatus">本地模式</span>
+        </div>
+        <a href="#weekly">周计划</a>
+        <a href="#today">今日训练</a>
+        <a href="#profile">强度</a>
+      </nav>
+      <section class="hero__content">
+        <p class="eyebrow">8 周训练节奏</p>
+        <h1>你的健身计划</h1>
+        <p>把训练、恢复和打卡放在同一个页面里，每天打开就知道该练什么。</p>
+        <div class="hero__actions">
+          <a class="button button--primary" href="#today">开始今日训练</a>
+          <a class="button button--ghost" href="#weekly">查看一周安排</a>
+        </div>
+      </section>
+    </header>
+
+    <main>
+      <section class="band summary" aria-label="计划概览">
+        <div>
+          <span class="metric" id="completedCount">0</span>
+          <span class="label">本周已完成</span>
+        </div>
+        <div>
+          <span class="metric">45-60</span>
+          <span class="label">分钟/次</span>
+        </div>
+        <div>
+          <span class="metric" id="streakCount">0</span>
+          <span class="label">连续打卡</span>
+        </div>
+        <div>
+          <span class="metric" id="completionRate">0%</span>
+          <span class="label">力量+有氧</span>
+        </div>
+        <div>
+          <span class="metric">RPE 7</span>
+          <span class="label">推荐强度</span>
+        </div>
+      </section>
+
+      <section class="section" id="goal">
+        <div class="section__head">
+          <p class="eyebrow">目标</p>
+          <h2>选择训练方向</h2>
+        </div>
+        <div class="segmented" role="tablist" aria-label="训练目标">
+          <button class="segment is-active" type="button" data-goal="fatLoss">减脂</button>
+          <button class="segment" type="button" data-goal="muscle">增肌</button>
+          <button class="segment" type="button" data-goal="shaping">塑形</button>
+          <button class="segment" type="button" data-goal="health">健康</button>
+        </div>
+      </section>
+
+      <section class="section today" id="today">
+        <div class="section__head">
+          <p class="eyebrow">今日</p>
+          <h2 id="todayTitle">今日训练</h2>
+        </div>
+        <div class="today__layout">
+          <article class="workout-card">
+            <div>
+              <p class="day" id="todayDay">周一</p>
+              <h3 id="todayFocus">全身力量</h3>
+              <p id="todayDetail">深蹲、推、拉、核心，保持动作质量。</p>
+            </div>
+            <button class="check-button" type="button" id="toggleToday" aria-pressed="false">
+              <span aria-hidden="true">✓</span>
+              <span>完成</span>
+            </button>
+          </article>
+          <aside class="notes">
+            <h3>训练节奏</h3>
+            <ul>
+              <li>热身 8 分钟：动态拉伸和轻重量动作。</li>
+              <li>主训练 30-40 分钟：每组保留 2-3 次余力。</li>
+              <li>收操 6 分钟：呼吸、拉伸、补水。</li>
+            </ul>
+            <div class="ai-card" id="aiAdvice">
+              <strong>AI 调整建议</strong>
+              <p>完成几次训练后，这里会根据完成度、疲劳和体重趋势给出调整。</p>
+            </div>
+          </aside>
+        </div>
+        <form class="feedback-panel is-hidden" id="feedbackForm">
+          <div class="section__head">
+            <p class="eyebrow">Feedback</p>
+            <h2>训练后反馈</h2>
+          </div>
+          <label>
+            <span>今日体重 kg</span>
+            <input type="number" min="35" max="180" step="0.1" id="feedbackWeight">
+          </label>
+          <label>
+            <span>完成度 %</span>
+            <input type="number" min="0" max="100" id="feedbackCompletion" value="100">
+          </label>
+          <label>
+            <span>疲劳程度</span>
+            <select id="feedbackFatigue">
+              <option value="1">1 很轻松</option>
+              <option value="2">2 轻微</option>
+              <option value="3" selected>3 正常</option>
+              <option value="4">4 疲劳</option>
+              <option value="5">5 很疲劳</option>
+            </select>
+          </label>
+          <label>
+            <span>训练难度</span>
+            <select id="feedbackDifficulty">
+              <option value="轻松">轻松</option>
+              <option value="适中" selected>适中</option>
+              <option value="困难">困难</option>
+            </select>
+          </label>
+          <label>
+            <span>实际完成情况</span>
+            <select id="feedbackActual">
+              <option value="全部完成" selected>全部完成</option>
+              <option value="部分完成">部分完成</option>
+              <option value="跳过训练">跳过训练</option>
+            </select>
+          </label>
+          <label>
+            <span>动作难度反馈</span>
+            <select id="feedbackExerciseDifficulty">
+              <option value="太简单">太简单</option>
+              <option value="适中" selected>适中</option>
+              <option value="太难">太难</option>
+            </select>
+          </label>
+          <label>
+            <span>是否容易执行</span>
+            <select id="feedbackExecutionEase">
+              <option value="简单" selected>简单</option>
+              <option value="困难">困难</option>
+            </select>
+          </label>
+          <label>
+            <span>睡眠时间 h</span>
+            <input type="number" min="0" max="14" step="0.5" id="feedbackSleep" value="7">
+          </label>
+          <label class="span-2">
+            <span>备注</span>
+            <input type="text" id="feedbackNote" placeholder="例如：膝盖轻微不适，卧推状态很好">
+          </label>
+          <button class="button button--primary" type="submit">保存反馈</button>
+        </form>
+      </section>
+
+      <section class="section" id="weekly">
+        <div class="section__head">
+          <p class="eyebrow">Week</p>
+          <h2>一周计划</h2>
+        </div>
+        <div class="week-grid" id="weekGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="section planner" id="profile">
+        <div class="section__head">
+          <p class="eyebrow">强度</p>
+          <h2>个人参数</h2>
+        </div>
+        <form class="profile" id="profileForm">
+          <label>
+            <span>姓名</span>
+            <input type="text" id="name" value="默认用户">
+          </label>
+          <label>
+            <span>性别</span>
+            <select id="gender">
+              <option value="未设置">未设置</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+            </select>
+          </label>
+          <label>
+            <span>年龄</span>
+            <input type="number" min="10" max="90" id="age" value="28">
+          </label>
+          <label>
+            <span>身高 cm</span>
+            <input type="number" min="120" max="230" id="height" value="170">
+          </label>
+          <label>
+            <span>体重 kg</span>
+            <input type="number" min="35" max="180" id="weight" value="65">
+          </label>
+          <label>
+            <span>训练目标</span>
+            <select id="goalInput">
+              <option value="fatLoss">减脂</option>
+              <option value="muscle">增肌</option>
+              <option value="shaping">塑形</option>
+              <option value="health">健康</option>
+            </select>
+          </label>
+          <label>
+            <span>训练经验</span>
+            <select id="experience">
+              <option value="beginner">新手</option>
+              <option value="intermediate" selected>中级</option>
+              <option value="advanced">高级</option>
+            </select>
+          </label>
+          <label>
+            <span>每周训练天数</span>
+            <select id="days">
+              <option value="3">3 天</option>
+              <option value="4" selected>4 天</option>
+              <option value="5">5 天</option>
+              <option value="6">6 天</option>
+            </select>
+          </label>
+          <label>
+            <span>训练地点</span>
+            <select id="location">
+              <option value="gym">健身房</option>
+              <option value="home">居家</option>
+              <option value="outdoor">户外</option>
+            </select>
+          </label>
+          <fieldset class="equipment-field">
+            <legend>可用器械</legend>
+            <label><input type="checkbox" name="equipment" value="瑜伽垫"> 瑜伽垫</label>
+            <label><input type="checkbox" name="equipment" value="哑铃"> 哑铃</label>
+            <label><input type="checkbox" name="equipment" value="弹力带"> 弹力带</label>
+            <label><input type="checkbox" name="equipment" value="臂力棒"> 臂力棒</label>
+            <label><input type="checkbox" name="equipment" value="无器械"> 无器械</label>
+          </fieldset>
+          <label>
+            <span>是否有伤病</span>
+            <select id="injury">
+              <option value="no">无</option>
+              <option value="yes">有</option>
+            </select>
+          </label>
+          <label>
+            <span>饮食类型</span>
+            <select id="dietPreference">
+              <option value="balanced">均衡饮食</option>
+              <option value="highProtein">高蛋白</option>
+              <option value="lowCarb">低碳</option>
+              <option value="vegetarian">素食</option>
+            </select>
+          </label>
+          <label>
+            <span>忌口</span>
+            <input type="text" id="dietRestrictions" placeholder="如：乳糖、海鲜、花生">
+          </label>
+          <label>
+            <span>日常活动量</span>
+            <select id="activityLevel">
+              <option value="sedentary">久坐</option>
+              <option value="light">轻度活动</option>
+              <option value="moderate" selected>中等活动</option>
+              <option value="active">高活动</option>
+            </select>
+          </label>
+          <button class="button button--primary" type="submit">更新建议</button>
+        </form>
+        <div class="recommendation" id="recommendation">
+          BMI 22.5，建议每周训练 4 天，力量和有氧交替安排。
+        </div>
+      </section>
+
+      <section class="section diet-section" id="diet">
+        <div class="section__head">
+          <p class="eyebrow">Nutrition</p>
+          <h2>今日饮食</h2>
+        </div>
+        <div class="diet-layout">
+          <article class="diet-card" id="dietCard"></article>
+          <article class="chart-card">
+            <h3>宏量营养</h3>
+            <canvas id="macroChart" width="420" height="220"></canvas>
+          </article>
+          <article class="diet-card diet-card--wide" id="dietAdvice"></article>
+        </div>
+      </section>
+
+      <section class="section stats" id="stats">
+        <div class="section__head">
+          <p class="eyebrow">Data</p>
+          <h2>数据统计</h2>
+        </div>
+        <div class="stats-grid">
+          <article class="chart-card">
+            <h3>体重趋势</h3>
+            <canvas id="weightChart" width="420" height="220"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>训练完成率</h3>
+            <canvas id="completionChart" width="420" height="220"></canvas>
+          </article>
+        </div>
+      </section>
+
+      <section class="section history-section" id="history">
+        <div class="section__head">
+          <p class="eyebrow">History</p>
+          <h2>最近 7 天训练记录</h2>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+    </main>
+
+    <footer>
+      <span>FitPlan</span>
+      <span>训练日保持稳定，休息日认真恢复。</span>
+    </footer>
+
+    <script src="supabase-config.js"></script>
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
