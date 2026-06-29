@@ -31,6 +31,8 @@ import { importCloudSnapshot, loadHistory, saveUser } from "./storage.js";
 let currentUser = ensureUser();
 let currentPlan = createWorkoutPlan(currentUser);
 let currentDiet = generateDietPlan(currentUser, loadHistory(currentUser.id));
+let cloudStarted = false;
+let syncQueue = Promise.resolve();
 
 const nodes = {
   userSelect: document.querySelector("#userSelect"),
@@ -65,18 +67,30 @@ function activeDay() {
 }
 
 async function boot() {
-  const cloud = await initializeCloudSync();
-  setSyncStatus(cloud.message);
-  try {
-    if (cloud.enabled) {
-      importCloudSnapshot(await pullCloudSnapshot());
-      currentUser = ensureUser();
-      await syncUser();
-    }
-  } catch (error) {
-    setSyncStatus("云端连接失败");
-  }
   render();
+  setSyncStatus("本地模式");
+  runWhenIdle(startCloudSync);
+}
+
+async function startCloudSync() {
+  if (cloudStarted) return;
+  cloudStarted = true;
+  setSyncStatus("云端连接中");
+
+  const cloud = await initializeCloudSync();
+  if (!cloud.enabled) {
+    setSyncStatus("本地模式");
+    return;
+  }
+
+  setSyncStatus(cloud.message);
+  const snapshot = await pullCloudSnapshot();
+  if (snapshot.users.length || snapshot.plans.length || snapshot.history.length) {
+    importCloudSnapshot(snapshot);
+    currentUser = ensureUser();
+    render();
+  }
+  queueSyncUser();
 }
 
 function render() {
@@ -169,8 +183,8 @@ function renderWeek() {
       currentUser.done[key] = !currentUser.done[key];
       currentUser.updatedAt = new Date().toISOString();
       saveUser(currentUser);
-      syncUser();
       render();
+      queueSyncUser();
     });
     nodes.weekGrid.appendChild(card);
   });
@@ -248,7 +262,7 @@ function updatePlanAfterProfile(profile) {
   currentUser.planModifier = adjustment.modifier;
   saveUser(currentUser);
   render();
-  syncUser();
+  queueSyncUser();
 }
 
 nodes.userSelect.addEventListener("change", () => {
@@ -261,7 +275,7 @@ nodes.addUserButton.addEventListener("click", () => {
   currentUser = addUser(name);
   nodes.newUserName.value = "";
   render();
-  syncUser();
+  queueSyncUser();
 });
 
 nodes.deleteUserButton.addEventListener("click", async () => {
@@ -269,8 +283,11 @@ nodes.deleteUserButton.addEventListener("click", async () => {
   if (!ok) return;
   const deletedId = currentUser.id;
   currentUser = deleteUser(currentUser.id);
-  await deleteCloudUser(deletedId).catch(() => setSyncStatus("云端连接失败"));
   render();
+  runWhenIdle(async () => {
+    const ok = await deleteCloudUser(deletedId);
+    setSyncStatus(ok ? "云端同步" : "本地模式");
+  });
 });
 
 document.querySelectorAll(".segment").forEach((button) => {
@@ -284,7 +301,7 @@ nodes.toggleToday.addEventListener("click", () => {
   saveUser(currentUser);
   nodes.feedbackForm.classList.toggle("is-hidden", !currentUser.done[key]);
   render();
-  syncUser();
+  queueSyncUser();
 });
 
 nodes.profileForm.addEventListener("submit", (event) => {
@@ -303,8 +320,11 @@ nodes.feedbackForm.addEventListener("submit", async (event) => {
   saveUser(currentUser);
   nodes.feedbackForm.classList.add("is-hidden");
   render();
-  await syncUser();
-  await upsertCloudHistory(currentUser.id, history).catch(() => setSyncStatus("云端连接失败"));
+  queueSyncUser();
+  queueCloudTask(async () => {
+    const ok = await upsertCloudHistory(currentUser.id, history);
+    setSyncStatus(ok ? "云端同步" : "本地模式");
+  });
 });
 
 function readProfile() {
@@ -350,14 +370,31 @@ function updateRecommendation() {
   nodes.recommendation.textContent = `BMI ${bmi.toFixed(1)}，${activeText}，饮食目标 ${currentDiet?.dailyCalories || "-"} kcal。`;
 }
 
-async function syncUser() {
-  try {
-    await upsertCloudUser(currentUser);
-    await insertCloudPlan(currentUser, currentPlan);
-    setSyncStatus("云端同步");
-  } catch (error) {
-    setSyncStatus("本地已保存");
+function queueSyncUser() {
+  queueCloudTask(async () => {
+    const userOk = await upsertCloudUser(currentUser);
+    const planOk = await insertCloudPlan(currentUser, currentPlan);
+    setSyncStatus(userOk || planOk ? "云端同步" : "本地模式");
+  });
+}
+
+function queueCloudTask(task) {
+  syncQueue = syncQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (!cloudStarted) return;
+      await task();
+    })
+    .catch(() => setSyncStatus("本地模式"));
+  return syncQueue;
+}
+
+function runWhenIdle(task) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(task, { timeout: 1200 });
+    return;
   }
+  window.setTimeout(task, 0);
 }
 
 function setSyncStatus(text) {
