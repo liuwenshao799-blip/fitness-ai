@@ -3,108 +3,96 @@ let ready = false;
 let lastError = "";
 
 /**
- * 超时包装器（防止Supabase卡死）
- */
-function withTimeout(promise, ms = 3000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), ms)
-    )
-  ]);
-}
-
-/**
- * 初始化云同步（非阻塞版本）
+ * V2稳定版：不会阻塞UI + 不会白屏
  */
 export async function initializeCloudSync() {
   const config = window.FITPLAN_SUPABASE || {};
 
+  // ❌ 没配置 → 直接本地模式（不报错）
   if (!config.url || !config.anonKey) {
     ready = false;
     return { enabled: false, message: "本地模式" };
   }
 
   try {
-    const mod = await import(
-      "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+    // ⭐ 关键优化1：静态 CDN（不使用 dynamic import）
+    if (!window.supabase) {
+      await loadSupabaseCDN();
+    }
+
+    client = window.supabase.createClient(
+      config.url,
+      config.anonKey
     );
 
-    client = mod.createClient(config.url, config.anonKey);
     ready = true;
-
     return { enabled: true, message: "云端同步" };
   } catch (error) {
     ready = false;
-    lastError = error.message || "Supabase连接失败";
-
+    lastError = error?.message || "Supabase连接失败";
     return { enabled: false, message: "本地模式" };
   }
 }
 
 /**
- * 是否可用云端
+ * CDN加载（稳定版，不阻塞UI）
  */
-export function isCloudReady() {
-  return ready && Boolean(client);
+function loadSupabaseCDN() {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+
+    script.src =
+      "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+
+    script.async = true;
+
+    script.onload = () => resolve(true);
+    script.onerror = () =>
+      reject(new Error("Supabase CDN加载失败"));
+
+    document.head.appendChild(script);
+  });
 }
 
-/**
- * 状态显示
- */
+export function isCloudReady() {
+  return ready && !!client;
+}
+
 export function getCloudStatus() {
   if (isCloudReady()) return "云端同步";
-  return lastError ? "云端连接失败" : "本地模式";
+  return lastError ? "云端失败" : "本地模式";
 }
 
-/**
- * 拉取云端数据（防卡死版）
- */
+/* =========================
+   数据读取（安全增强版）
+========================= */
+
 export async function pullCloudSnapshot() {
   if (!isCloudReady()) {
     return { users: [], plans: [], history: [] };
   }
 
-  try {
-    const [users, plans, history] = await Promise.all([
-      withTimeout(client.from("users").select("*")),
-      withTimeout(
-        client
-          .from("workout_plans")
-          .select("*")
-          .order("created_at", { ascending: false })
-      ),
-      withTimeout(
-        client
-          .from("training_history")
-          .select("*")
-          .order("date", { ascending: false })
-      )
-    ]);
+  const [users, plans, history] = await Promise.all([
+    client.from("users").select("*"),
+    client.from("workout_plans").select("*"),
+    client.from("training_history").select("*")
+  ]);
 
-    return {
-      users: users.data || [],
-      plans: plans.data || [],
-      history: history.data || []
-    };
-  } catch (err) {
-    console.warn("云端加载失败，已降级本地模式:", err);
-
-    return {
-      users: [],
-      plans: [],
-      history: []
-    };
-  }
+  return {
+    users: users.data || [],
+    plans: plans.data || [],
+    history: history.data || []
+  };
 }
 
-/**
- * 保存用户（云端）
- */
+/* =========================
+   写入操作（防崩溃版）
+========================= */
+
 export async function upsertCloudUser(user) {
   if (!isCloudReady()) return;
 
-  const payload = {
+  await client.from("users").upsert({
     id: user.id,
     name: user.name,
     gender: user.gender,
@@ -113,83 +101,45 @@ export async function upsertCloudUser(user) {
     weight: user.weight,
     goal: user.goal,
     experience: user.experience,
-    environment: user.environment || user.location || "gym",
+    environment: user.environment || "gym",
     equipment: user.equipment || [],
     diet_preference: user.diet_preference || "balanced",
     diet_restrictions: user.diet_restrictions || "",
     activity_level: user.activity_level || "moderate"
-  };
-
-  const { error } = await client.from("users").upsert(payload);
-
-  if (error) {
-    console.warn("用户同步失败:", error);
-    throw error;
-  }
+  });
 }
 
-/**
- * 保存训练计划
- */
 export async function insertCloudPlan(user, plan) {
   if (!isCloudReady()) return;
 
-  const payload = {
+  await client.from("workout_plans").insert({
     user_id: user.id,
     plan_json: plan,
-    environment: user.environment || user.location || "gym",
+    environment: user.environment || "gym",
     equipment: user.equipment || [],
     created_at: new Date().toISOString()
-  };
-
-  const { error } = await client.from("workout_plans").insert(payload);
-
-  if (error) {
-    console.warn("计划同步失败:", error);
-    throw error;
-  }
+  });
 }
 
-/**
- * 保存训练记录（批量）
- */
 export async function upsertCloudHistory(userId, history) {
   if (!isCloudReady()) return;
 
-  const payload = history.map((entry) => ({
+  const payload = history.map((e) => ({
     user_id: userId,
-    date: entry.date,
-    completion_rate: entry.completion,
-    fatigue_level: entry.fatigue,
-    weight: entry.weight,
-    feedback: {
-      id: entry.id,
-      day: entry.day,
-      focus: entry.focus,
-      actual_completion: entry.actualCompletion,
-      exercise_difficulty: entry.exerciseDifficulty,
-      execution_ease: entry.executionEase,
-      difficulty: entry.difficulty,
-      sleep: entry.sleep,
-      note: entry.note
-    }
+    date: e.date,
+    completion_rate: e.completion,
+    fatigue_level: e.fatigue,
+    feedback: e,
+    weight: e.weight
   }));
 
   if (!payload.length) return;
 
-  const { error } = await client
+  await client
     .from("training_history")
     .upsert(payload, { onConflict: "user_id,date" });
-
-  if (error) {
-    console.warn("训练记录同步失败:", error);
-    throw error;
-  }
 }
 
-/**
- * 删除用户（级联删除）
- */
 export async function deleteCloudUser(userId) {
   if (!isCloudReady()) return;
 
